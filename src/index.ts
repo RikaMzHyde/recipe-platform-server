@@ -82,7 +82,7 @@ app.get('/api/recipes', async (_req: Request, res: Response) => {
     const { rows } = await query(
       `SELECT r.id, r.title, r.description, r.category_id AS "categoryId", c.name AS "categoryName",
               r.image_url AS "imageUrl", r.ingredients, r.prep_time AS "prepTime", 
-              r.cook_time AS "cookTime", r.servings, r.difficulty, r.created_at AS "createdAt",
+              r.cook_time AS "cookTime", r.servings, r.difficulty, r.preparation AS "preparation", r.created_at AS "createdAt",
               r.user_id AS "userId", u.name AS "userName", u.avatar_url AS "userAvatar"
        FROM public.recipes r
        LEFT JOIN public.categories c ON c.id = r.category_id
@@ -101,7 +101,7 @@ app.get('/api/recipes/:id', async (req: Request, res: Response) => {
     const { rows } = await query(
       `SELECT r.id, r.title, r.description, r.category_id AS "categoryId", c.name AS "categoryName",
               r.image_url AS "imageUrl", r.ingredients, r.prep_time AS "prepTime",
-              r.cook_time AS "cookTime", r.servings, r.difficulty, r.created_at AS "createdAt",
+              r.cook_time AS "cookTime", r.servings, r.difficulty, r.preparation AS "preparation", r.created_at AS "createdAt",
               r.user_id AS "userId", u.name AS "userName", u.avatar_url AS "userAvatar"
        FROM public.recipes r
        LEFT JOIN public.categories c ON c.id = r.category_id
@@ -119,17 +119,18 @@ app.get('/api/recipes/:id', async (req: Request, res: Response) => {
 
 const RecipeCreateSchema = z.object({
   title: z.string().min(1),
-  description: z.string().optional(),
-  categoryId: z.coerce.number().int().positive().optional(),
-  imageUrl: z.string().url().optional(),
+  description: z.string().nullable().optional(),
+  categoryId: z.coerce.number().int().positive().nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
   ingredients: z.array(z.object({
     name: z.string(),
     amount: z.string(),
   })).optional(),
-  prepTime: z.string().optional(),
-  cookTime: z.string().optional(),
-  servings: z.coerce.number().int().positive().optional(),
-  difficulty: z.enum(["Fácil", "Media", "Difícil"]).optional(),
+  prepTime: z.string().nullable().optional(),
+  cookTime: z.string().nullable().optional(),
+  preparation: z.string().max(2000).nullable().optional(),
+  servings: z.coerce.number().int().positive().nullable().optional(),
+  difficulty: z.enum(["Fácil", "Media", "Difícil"]).nullable().optional(),
   userId: z.string().uuid(),
 })
 
@@ -171,6 +172,7 @@ app.post('/api/recipes/with-image', upload.single('image'), async (req: Request,
       ingredients,
       prepTime,
       cookTime,
+      preparation,
       servings,
       difficulty,
       userId,
@@ -178,11 +180,11 @@ app.post('/api/recipes/with-image', upload.single('image'), async (req: Request,
 
     const { rows } = await query(
       `INSERT INTO public.recipes
-        (user_id, category_id, title, description, ingredients, image_url, prep_time, cook_time, servings, difficulty)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        (user_id, category_id, title, description, ingredients, image_url, prep_time, cook_time, servings, difficulty, preparation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id, user_id AS "userId", category_id AS "categoryId", title, description, ingredients,
                  image_url AS "imageUrl", prep_time AS "prepTime", cook_time AS "cookTime", 
-                 servings, difficulty, created_at AS "createdAt"`,
+                 servings, difficulty, preparation AS "preparation", created_at AS "createdAt"`,
       [
         userId,
         categoryId ?? null,
@@ -194,6 +196,7 @@ app.post('/api/recipes/with-image', upload.single('image'), async (req: Request,
         cookTime ?? null,
         servings ?? null,
         difficulty ?? null,
+        preparation ?? null,
       ]
     )
     return res.status(201).json(rows[0])
@@ -217,6 +220,7 @@ app.post('/api/recipes', async (req: Request, res: Response) => {
     ingredients,
     prepTime,
     cookTime,
+    preparation,
     servings,
     difficulty,
     userId,
@@ -224,11 +228,11 @@ app.post('/api/recipes', async (req: Request, res: Response) => {
   try {
     const { rows } = await query(
       `INSERT INTO public.recipes
-        (user_id, category_id, title, description, ingredients, image_url, prep_time, cook_time, servings, difficulty)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        (user_id, category_id, title, description, ingredients, image_url, prep_time, cook_time, servings, difficulty, preparation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id, user_id AS "userId", category_id AS "categoryId", title, description, ingredients,
                  image_url AS "imageUrl", prep_time AS "prepTime", cook_time AS "cookTime",
-                 servings, difficulty, created_at AS "createdAt"`,
+                 servings, difficulty, preparation AS "preparation", created_at AS "createdAt"`,
       [
         userId,
         categoryId ?? null,
@@ -240,6 +244,7 @@ app.post('/api/recipes', async (req: Request, res: Response) => {
         cookTime ?? null,
         servings ?? null,
         difficulty ?? null,
+        preparation ?? null,
       ]
     )
     return res.status(201).json(rows[0])
@@ -263,6 +268,7 @@ app.put('/api/recipes/:id', async (req: Request, res: Response) => {
     ingredients,
     prepTime,
     cookTime,
+    preparation,
     servings,
     difficulty,
   } = parsed.data
@@ -304,6 +310,10 @@ app.put('/api/recipes/:id', async (req: Request, res: Response) => {
       updates.push(`cook_time = $${paramIndex++}`)
       values.push(cookTime)
     }
+    if (preparation !== undefined) {
+      updates.push(`preparation = $${paramIndex++}`)
+      values.push(preparation)
+    }
     if (servings !== undefined) {
       updates.push(`servings = $${paramIndex++}`)
       values.push(servings)
@@ -323,7 +333,7 @@ app.put('/api/recipes/:id', async (req: Request, res: Response) => {
        WHERE id = $${paramIndex}
        RETURNING id, user_id AS "userId", category_id AS "categoryId", title, description, ingredients,
                  image_url AS "imageUrl", prep_time AS "prepTime", cook_time AS "cookTime", 
-                 servings, difficulty, created_at AS "createdAt"`,
+                 servings, difficulty, preparation AS "preparation", created_at AS "createdAt"`,
       values
     )
     return res.json(rows[0])
@@ -472,7 +482,7 @@ app.get('/api/users/:userId/recipes', async (req: Request, res: Response) => {
     const { rows } = await query(
       `SELECT r.id, r.title, r.description, r.category_id AS "categoryId", c.name AS "categoryName",
               r.image_url AS "imageUrl", r.ingredients, r.prep_time AS "prepTime",
-              r.cook_time AS "cookTime", r.servings, r.difficulty, r.created_at AS "createdAt",
+              r.cook_time AS "cookTime", r.servings, r.difficulty, r.preparation AS "preparation", r.created_at AS "createdAt",
               r.user_id AS "userId"
        FROM public.recipes r
        LEFT JOIN public.categories c ON c.id = r.category_id
