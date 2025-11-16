@@ -370,23 +370,32 @@ app.get('/api/users/:id', async (req: Request, res: Response) => {
   res.json(user)
 })
 
-// Actualizar usuario
+// Actualizar usuario (nombre y, opcionalmente, avatar)
 app.put('/api/users/:id', async (req: Request, res: Response) => {
   const { id } = req.params
-  const { name } = req.body
-  
+  const { name, avatarUrl } = req.body as { name?: string; avatarUrl?: string }
+
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'El nombre es obligatorio' })
   }
 
   try {
-    const { rows } = await query(
-      'UPDATE public.users SET name = $1 WHERE id = $2 RETURNING id, name, email, avatar_url AS "avatarUrl", created_at AS "createdAt"',
-      [name.trim(), id]
-    )
-    
+    let queryText = 'UPDATE public.users SET name = $1'
+    const values: any[] = [name.trim()]
+    let paramIndex = 2
+
+    if (avatarUrl !== undefined) {
+      queryText += `, avatar_url = $${paramIndex++}`
+      values.push(avatarUrl || null)
+    }
+
+    queryText += ` WHERE id = $${paramIndex} RETURNING id, name, email, avatar_url AS "avatarUrl", created_at AS "createdAt"`
+    values.push(id)
+
+    const { rows } = await query(queryText, values)
+
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' })
-    
+
     res.json(rows[0])
   } catch (e) {
     res.status(500).json({ error: (e as Error).message })
