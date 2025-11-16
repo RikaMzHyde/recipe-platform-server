@@ -511,6 +511,8 @@ const RegisterSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   avatarUrl: z.string().url().optional(),
+  securityQuestionId: z.number().int().positive(),
+  securityAnswer: z.string().min(1),
 })
 
 app.post('/api/auth/register', async (req: Request, res: Response) => {
@@ -518,7 +520,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
   if (!parsed.success) {
     return res.status(400).json({ error: 'Datos inválidos', details: parsed.error.flatten() })
   }
-  const { name, email, password, avatarUrl } = parsed.data
+  const { name, email, password, avatarUrl, securityQuestionId, securityAnswer } = parsed.data
   try {
     // ¿Existe ya el email?
     const { rows: exists } = await query<{ exists: boolean }>(
@@ -530,9 +532,10 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10)
+    const securityAnswerHash = await bcrypt.hash(securityAnswer.toLowerCase().trim(), 10)
     const { rows } = await query(
-      'INSERT INTO public.users (name, email, avatar_url, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email, avatar_url AS "avatarUrl", created_at AS "createdAt"',
-      [name, email, avatarUrl ?? null, passwordHash]
+      'INSERT INTO public.users (name, email, avatar_url, password_hash, security_question_id, security_answer_hash) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, avatar_url AS "avatarUrl", created_at AS "createdAt"',
+      [name, email, avatarUrl ?? null, passwordHash, securityQuestionId, securityAnswerHash]
     )
     const user = rows[0]
     return res.status(201).json(user)
@@ -681,6 +684,93 @@ app.post('/api/recipes/:id/comments', async (req: Request, res: Response) => {
     return res.status(201).json(rows[0])
   } catch (e) {
     return res.status(500).json({ error: (e as Error).message })
+  }
+})
+
+// Obtener pregunta de seguridad por email
+app.get('/api/auth/security-question', async (req: Request, res: Response) => {
+  const { email } = req.query
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ error: 'Email es requerido' })
+  }
+  
+  try {
+    const { rows } = await query(
+      `SELECT sq.question 
+       FROM public.users u
+       JOIN security_questions sq ON u.security_question_id = sq.id
+       WHERE lower(u.email) = lower($1)`,
+      [email]
+    )
+    
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Email no registrado o sin pregunta de seguridad configurada' })
+    }
+    
+    res.json({ question: rows[0].question })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message })
+  }
+})
+
+// Verificar respuesta y cambiar contraseña
+const ResetPasswordSchema = z.object({
+  email: z.string().email(),
+  securityAnswer: z.string().min(1),
+  newPassword: z.string().min(6),
+})
+
+app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+  const parsed = ResetPasswordSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Datos inválidos', details: parsed.error.flatten() })
+  }
+  
+  const { email, securityAnswer, newPassword } = parsed.data
+  
+  try {
+    const { rows } = await query(
+      'SELECT id, security_answer_hash FROM public.users WHERE lower(email) = lower($1)',
+      [email]
+    )
+    
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Email no registrado' })
+    }
+    
+    const user = rows[0] as { id: string; security_answer_hash: string }
+    
+    if (!user.security_answer_hash) {
+      return res.status(400).json({ error: 'Este usuario no tiene respuesta de seguridad configurada' })
+    }
+    
+    const isAnswerValid = await bcrypt.compare(securityAnswer.toLowerCase().trim(), user.security_answer_hash)
+    if (!isAnswerValid) {
+      return res.status(401).json({ error: 'Respuesta de seguridad incorrecta' })
+    }
+    
+    const newPasswordHash = await bcrypt.hash(newPassword, 10)
+    
+    await query(
+      'UPDATE public.users SET password_hash = $1 WHERE id = $2',
+      [newPasswordHash, user.id]
+    )
+    
+    res.json({ message: 'Contraseña actualizada correctamente' })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message })
+  }
+})
+
+// Obtener lista de preguntas de seguridad desde la base de datos
+app.get('/api/auth/security-questions', async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await query(
+      'SELECT id, question FROM security_questions ORDER BY id'
+    )
+    res.json({ questions: rows })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message })
   }
 })
 
