@@ -26,7 +26,9 @@ if (!connectionString) {
 const pool = new Pool({
   connectionString,
   ssl: {
-    rejectUnauthorized: true,
+    // En producción (Aiven/Render), no verifiques el certificado autofirmado.
+    // En local, sí, para mayor seguridad.
+    rejectUnauthorized: process.env.NODE_ENV !== 'production',
     ca: caText,
   },
 })
