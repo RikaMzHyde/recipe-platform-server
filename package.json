@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "bun install && tsc",
+    "dev": "bun run tsx watch src/index.ts",
+    "build": "tsc",
     "start": "node dist/index.js"
   },
   "dependencies": {
