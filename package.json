@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run tsx watch src/index.ts",
-    "build": "tsc && cp src/ca.pem dist/ca.pem",
+"build": "bun build ./src/index.ts --outdir ./dist --target node",
     "start": "node dist/index.js"
   },
   "dependencies": {
