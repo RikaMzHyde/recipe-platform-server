@@ -1,6 +1,21 @@
 import 'dotenv/config'
 import { Pool } from 'pg'
-import caText from './ca.pem' with { type: 'text' }
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+let caText: string;
+
+if (process.env.NODE_ENV === 'production') {
+  // En producción, usa el import dinámico que funcionará en el entorno de despliegue
+  const caModule = await import('./ca.pem', { with: { type: 'text' } });
+  caText = caModule.default;
+} else {
+  // En desarrollo, lee el archivo directamente
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  caText = fs.readFileSync(path.join(__dirname, 'ca.pem'), 'utf-8');
+}
 
 const connectionString = process.env.DATABASE_URL
 
