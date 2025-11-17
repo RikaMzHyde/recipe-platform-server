@@ -4,8 +4,6 @@
     "module": "ESNext",
     "lib": ["ES2020"],
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-"moduleDetection": "force",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
