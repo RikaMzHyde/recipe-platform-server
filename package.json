@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run tsx watch src/index.ts",
-"build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "dev:debug": "bun run tsx watch --inspect src/index.ts",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node",
     "start": "node dist/index.js"
   },
   "dependencies": {
