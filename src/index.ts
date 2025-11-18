@@ -687,6 +687,32 @@ app.post('/api/recipes/:id/comments', async (req: Request, res: Response) => {
   }
 })
 
+// Eliminar comentario (solo el autor)
+app.delete('/api/recipes/:recipeId/comments/:commentId', async (req: Request, res: Response) => {
+  const { recipeId, commentId } = req.params
+  const { userId } = req.query
+
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ error: 'userId es requerido' })
+  }
+
+  try {
+    const { rows } = await query(
+      'SELECT id FROM public.comments WHERE id = $1 AND recipe_id = $2 AND user_id = $3',
+      [commentId, recipeId, userId],
+    )
+
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Comentario no encontrado' })
+    }
+
+    await query('DELETE FROM public.comments WHERE id = $1', [commentId])
+    return res.status(204).end()
+  } catch (e) {
+    return res.status(500).json({ error: (e as Error).message })
+  }
+})
+
 // Obtener pregunta de seguridad por email
 app.get('/api/auth/security-question', async (req: Request, res: Response) => {
   const { email } = req.query
